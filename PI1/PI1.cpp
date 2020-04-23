@@ -3,6 +3,7 @@
 #include <omp.h>
 #include <cmath>
 #include <iostream>
+#include <algorithm>
 
 using namespace std;
 
@@ -101,92 +102,84 @@ void byDeletionSequentially() {
 
 }
 
-void byDivisionParallel() {
-	const int M = 100; // zakres od
-	const int N = 997; // zakres do
-
-	bool isPrimeNumber[N + 1 - M];  //tu nie powinno być N+1-M?
-
-	for (int i = 0; i < N - M; i++) {
-		isPrimeNumber[i] = true; // ustaw wszystkie liczby z zakresy jako pierwsze
-	}
 
 
-	//#pragma omp for private(isPrimeNumber)  //isPrimeNumber może być prywatne, dzięki temu unikniemy unieważnień (chyba xD), a po zakończeniu obliczeń można mnożyć z globalnym te wartości,
-											//które są false, to true*false da false i nie stanie się nic złego jak będzie false*false 
-											//czyli nawet by nie trzeba tego robić atomowo tylko mnożyć na pałę
 
-											//albo w sumie jednak nie, bo to po prostu te unieważnienia pojawią się przy tym mnożeniu i tak xD
-#pragma omp parallel shared(isPrimeNumber)
+
+
+
+//void byDivisionParallel(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+//	omp_set_num_threads(4);
+//#pragma omp parallel
+//	{
+//#pragma omp for nowait
+//		for (int currentNumber = M; currentNumber <= N; currentNumber++) {
+//			int maxDivisorValue = (int)floor(sqrt(currentNumber)); // maksymalna wartość podzielnika dla danej liczby
+//
+//			for (int currentDivisor = 2; currentDivisor <= maxDivisorValue; currentDivisor++) {
+//				//sprawdzaj kolejne podzielniki
+//				if (currentNumber % currentDivisor == 0) {
+//					//jeżeli dzieli się bez reszty to liczba jest złożona
+//					isPrimeNumber[currentNumber - M] = false;
+//					break;
+//				}
+//			}
+//		}
+//	}
+//}
+
+
+
+
+
+void byDeletionFunctional(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+	omp_set_num_threads(4);
+#pragma omp parallel
 	{
-
 #pragma omp for nowait
-		for (int currentNumber = M; currentNumber <= N; currentNumber++) {
-			int maxDivisorValue = (int)floor(sqrt(currentNumber)); // maksymalna wartość podzielnika dla danej liczby
-
-			for (int currentDivisor = 2; currentDivisor <= maxDivisorValue; currentDivisor++) {
-				//sprawdzaj kolejne podzielniki
-				if (currentNumber % currentDivisor == 0) {
-					//jeżeli dzieli się bez reszty to liczba jest złożona
-					isPrimeNumber[currentNumber - M] = false;
-					break;
-				}
+		for (long i = 2; i <= maxDivisorValue; i++) {
+			for (long j = (long) max(2.0, ceil(M / i)); j <= (long)ceil(N / i); j++) {	
+				long multiple = i * j;														
+				if (multiple >= M && multiple <= N)											
+					isPrimeNumber[multiple - M] = false;
 			}
 		}
 	}
-
-	int numberOfPrimes = 0;
-	for (int i = M; i <= N; i++) {
-		// zlicz liczby pierwsze
-		if (isPrimeNumber[i]) {
-			numberOfPrimes++;
-		}
-	}
-	printf("Dzielenie sekwencyjnie:\n");
-	printf("W przedziale <%d, %d> jest %d liczb pierwszych\n", M, N, numberOfPrimes);
 }
 
-void byDeletionForLoop() {
-	const int M = 100; // zakres od
-	const int N = 120; // zakres do
-
-	bool isPrimeNumber[N + 1 - M];
-
-	for (int i = 0; i <= N - M; i++) {
-		isPrimeNumber[i] = true; // ustaw wszystkie liczby z zakresy jako pierwsze
-	}
-
-	int maxDivisorValue = (int)floor(sqrt(N)); // maksymalna wartość podzielnika
-
-	//omp for domenowy
-	for (int i = 2; i < maxDivisorValue; i++) {
-		//omp for funkcyjny
-		for (int j = ceil(M/i); j <= ceil(N/i); j++) {					//i*M/i daje nam M, i*N/i daje nam N, a więc mamy pokryty pełen zakres od M do N
-			int multiple = i * j;										//ceil, bo dla M=100 daje i i=3 daje 33,(3), 3*33,(3) daje 99,(9), czyli liczbę poza zakresem
-			if (multiple >= M && multiple <= N)							//ceil da nam 34*3 czyli 102, więc zaczynamy od pierwszej wielokrotności w zakresie
-				isPrimeNumber[multiple - M] = false;
-			cout << i << " * " << j << " = " << multiple << endl;
+void byDeletionDomain(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+	omp_set_num_threads(4);
+#pragma omp parallel
+	{
+		for (long i = 2; i <= maxDivisorValue; i++) {
+#pragma omp for nowait
+			for (long j = (long)max(2.0, ceil(M / i)); j <= (long)ceil(N / i); j++) {			
+				long multiple = i * j;														
+				if (multiple >= M && multiple <= N)											
+					isPrimeNumber[multiple - M] = false;
+			}
 		}
 	}
-
-	int numberOfPrimes = 0;
-	for (int i = 0; i < N+1-M; i++) {
-		// zlicz liczby pierwsze
-		if (isPrimeNumber[i]) {
-			numberOfPrimes++;
-			cout << i + M << endl;
-		}
-	}
-	printf("Usuwanie sekwencyjnie:\n");
-	printf("W przedziale <%d, %d> jest %d liczb pierwszych\n", M, N, numberOfPrimes);
-
 }
+
+const long M = 2; // zakres od
+const long N = 120000000; // zakres do
+
+bool isPrimeNumber[N + 1 - M];
 
 
 int main() {
-	//byDivisionSequentially();
-	//byDeletionSequentially();
-	byDeletionForLoop();
+
+	long maxDivisorValue = (long)sqrt(N); // maksymalna wartość podzielnika
+	omp_set_num_threads(4);
+
+	for (long i = 0; i <= N - M; i++) {
+		isPrimeNumber[i] = true; // ustaw wszystkie liczby z zakresy jako pierwsze
+	}
+
+	//byDeletionForLoop(M, N, maxDivisorValue, isPrimeNumber);
+	//byDeletionFunctional(M, N, maxDivisorValue, isPrimeNumber);
+	byDeletionDomain(M, N, maxDivisorValue, isPrimeNumber);
 
 	return 0;
 }
