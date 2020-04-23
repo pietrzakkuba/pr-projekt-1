@@ -3,3 +3,7 @@
 ################################################################################
 
 /.vs/PI1/v16/ipch/AutoPCH/2e4e71028c6282b/PI1.ipch
+/.vs
+/PI1/x64/Release/PI1.tlog
+/PI1/x64/Release
+/x64/Release
