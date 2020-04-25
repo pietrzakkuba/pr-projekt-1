@@ -4,23 +4,30 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <iterator>
 
 using namespace std;
 
-void countPrimes(long M, long N, bool isPrimeNumber[], bool mode=false) {
+#define M 2
+#define N 240000000
+
+void countPrimes(bool isPrimeNumber[], bool mode=false) {
 	int numberOfPrimes = 0;
 	for (int i = 0; i <= N - M; i++) {
 		// zlicz liczby pierwsze
 		if (isPrimeNumber[i]) {
 			numberOfPrimes++;
-			if (mode) printf("%d\n", i + M);
+			if (mode) {
+				if(i<100 || i>N-M-100)
+					printf("%d. %d\n", numberOfPrimes, i + M);
+			}
 		}
 	}
 	printf("Usuwanie sekwencyjnie:\n");
 	printf("W przedziale <%d, %d> jest %d liczb pierwszych\n", M, N, numberOfPrimes);
 }
 
-void byDivisionSequentially(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+void byDivisionSequentially(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
 
 	for (int currentNumber = M; currentNumber <= N; currentNumber++) {
 		int maxDivisorValue = (int)sqrt(currentNumber); // maksymalna wartość podzielnika dla danej liczby
@@ -34,11 +41,11 @@ void byDivisionSequentially(long M, long N, long maxDivisorValue, bool isPrimeNu
 			}
 		}
 	}
-
-	//countPrimes()
+	if (mode)
+		countPrimes(isPrimeNumber);
 }
 
-void byDeletionSequentially(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+void byDeletionSequentially(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
 	for (long i = 2; i <= maxDivisorValue; i++) {
 		for (long j = (long)max(2.0, ceil(M / i)); j <= (long)ceil(N / i); j++) {
 			long multiple = i * j;
@@ -46,10 +53,11 @@ void byDeletionSequentially(long M, long N, long maxDivisorValue, bool isPrimeNu
 				isPrimeNumber[multiple - M] = false;
 		}
 	}
-	countPrimes(M, N, isPrimeNumber);
+	if (mode)
+		countPrimes(isPrimeNumber);
 }
 
-void byDivisionParallel(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+void byDivisionParallel(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
 	omp_set_num_threads(4);
 #pragma omp parallel
 	{
@@ -67,25 +75,12 @@ void byDivisionParallel(long M, long N, long maxDivisorValue, bool isPrimeNumber
 			}
 		}
 	}
+	if (mode)
+		countPrimes(isPrimeNumber);
 }
 
 
-void byDeletionFunctional(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
-	omp_set_num_threads(4);
-#pragma omp parallel
-	{
-#pragma omp for nowait
-		for (long i = 2; i <= maxDivisorValue; i++) {
-			for (long j = (long) max(2.0, ceil(M / i)); j <= (long)ceil(N / i); j++) {	
-				long multiple = i * j;														
-				if (multiple >= M && multiple <= N)											
-					isPrimeNumber[multiple - M] = false;
-			}
-		}
-	}
-}
-
-void byDeletionDomain(long M, long N, long maxDivisorValue, bool isPrimeNumber[]) {
+void byDeletionDomain(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
 	omp_set_num_threads(4);
 #pragma omp parallel 
 	{
@@ -94,25 +89,100 @@ void byDeletionDomain(long M, long N, long maxDivisorValue, bool isPrimeNumber[]
 		int threadM = !threadnum ? M : M + 1 + div * threadnum;
 		int threadN = threadnum == omp_get_num_threads() - 1 ? N : M + div * (threadnum + 1);
 
-
 		long threadMaxDivisorValue = (long)sqrt(threadN);
-		//printf("%d zakres: %d - %d, %d\n", omp_get_thread_num(), threadM, threadN, threadMaxDivisorValue);
 
 		for (long i = 2; i <= threadMaxDivisorValue; i++) {
 			for (long j = (long)max(2.0, ceil(threadM / i)); j <= (long)ceil(threadN / i); j++) {
 				long multiple = i * j;
 				if (multiple >= threadM && multiple <= threadN)
 					isPrimeNumber[multiple - M] = false;
-				printf("%d: %d * %d = %d\n", threadnum, i, j, multiple);
 			}
 		}
 	}
-	countPrimes(M, N, isPrimeNumber, true);
+	if (mode)
+		countPrimes(isPrimeNumber);
 }
 
+void byDeletionDomainReduction(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
+	omp_set_num_threads(4);
+#pragma omp parallel 
+	{
+		bool* threadIsPrimeNumber = new bool[N + 1 - M];
+		memcpy(threadIsPrimeNumber, isPrimeNumber, N + 1 - M);
 
-const long M = 2; // zakres od
-const long N = 100; // zakres do
+		int threadnum = omp_get_thread_num();
+		int div = ((N - M + 1) / omp_get_num_threads());
+		int threadM = !threadnum ? M : M + 1 + div * threadnum;
+		int threadN = threadnum == omp_get_num_threads() - 1 ? N : M + div * (threadnum + 1);
+
+		long threadMaxDivisorValue = (long)sqrt(threadN);
+
+		for (long i = 2; i <= threadMaxDivisorValue; i++) {
+			for (long j = (long)max(2.0, ceil(threadM / i)); j <= (long)ceil(threadN / i); j++) {
+				long multiple = i * j;
+				if (multiple >= threadM && multiple <= threadN)
+					threadIsPrimeNumber[multiple - M] = false;
+			}
+		}
+
+
+		for (int i = 0; i < N + 1 - M; i++) {
+			isPrimeNumber[i] = isPrimeNumber[i] && threadIsPrimeNumber[i];
+		}
+
+	}
+
+	if (mode)
+		countPrimes(isPrimeNumber, true);
+}
+
+void byDeletionFunctional(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
+	omp_set_num_threads(4);
+#pragma omp parallel
+	{
+#pragma omp for nowait schedule(guided)
+		for (long i = maxDivisorValue; i >= 2; i--) {
+			for (long j = (long)max(2.0, ceil(M / i)); j <= (long)ceil(N / i); j++) {
+				long multiple = i * j;
+				if (multiple >= M && multiple <= N)
+					isPrimeNumber[multiple - M] = false;
+			}
+		}
+	}
+	if (mode)
+		countPrimes(isPrimeNumber, true);
+}
+
+void byDeletionFunctionalReduction(long maxDivisorValue, bool isPrimeNumber[], bool mode=false) {
+	omp_set_num_threads(4);
+#pragma omp parallel
+	{
+		bool *threadIsPrimeNumber = new bool[N + 1 - M];
+		memcpy(threadIsPrimeNumber, isPrimeNumber, N + 1 - M);
+
+		int threadnum = omp_get_thread_num();
+
+#pragma omp for nowait
+		for (long i = 2; i <= maxDivisorValue; i++) {
+			for (long j = (long)max(2.0, ceil(M / i)); j <= (long)ceil(N / i); j++) {
+				long multiple = i * j;
+				if (multiple >= M && multiple <= N)
+					threadIsPrimeNumber[multiple - M] = false;
+			}
+		}
+
+#pragma omp critical
+		{
+			for (int i = 0; i < N + 1 - M; i++) {
+				isPrimeNumber[i] = isPrimeNumber[i] && threadIsPrimeNumber[i];
+			}
+		}
+	
+	}
+	if(mode)
+		countPrimes(isPrimeNumber);
+}
+
 
 bool isPrimeNumber[N + 1 - M];
 
@@ -125,12 +195,10 @@ int main() {
 		isPrimeNumber[i] = true; // ustaw wszystkie liczby z zakresy jako pierwsze
 	}
 
-	//byDeletionForLoop(M, N, maxDivisorValue, isPrimeNumber);
-	//byDeletionFunctional(M, N, maxDivisorValue, isPrimeNumber);
-	//byDeletionDomain(M, N, maxDivisorValue, isPrimeNumber);
-	//testdiv(M, N, maxDivisorValue, isPrimeNumber);
-
-	byDeletionDomain(M, N, maxDivisorValue, isPrimeNumber);
-
+	//byDeletionDomain(maxDivisorValue, isPrimeNumber);
+	//byDeletionFunctional(maxDivisorValue, isPrimeNumber);
+	//byDeletionFunctional(maxDivisorValue, isPrimeNumber, true);
+	//byDeletionFunctionalReduction(maxDivisorValue, isPrimeNumber, true);
+	byDeletionSequentially(maxDivisorValue, isPrimeNumber);
 	return 0;
 }
