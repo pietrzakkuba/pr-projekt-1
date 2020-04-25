@@ -9,16 +9,16 @@
 using namespace std;
 
 #define M 2
-#define N 240000000
+#define N 500000000
 
-void countPrimes(bool isPrimeNumber[], bool mode=false) {
+void countPrimes(bool isPrimeNumber[], bool mode = false) {
 	int numberOfPrimes = 0;
 	for (int i = 0; i <= N - M; i++) {
 		// zlicz liczby pierwsze
 		if (isPrimeNumber[i]) {
 			numberOfPrimes++;
 			if (mode) {
-				if(i<100 || i>N-M-100)
+				if (i<100 || i>N - M - 100)
 					printf("%d. %d\n", numberOfPrimes, i + M);
 			}
 		}
@@ -153,11 +153,11 @@ void byDeletionFunctional(long maxDivisorValue, bool isPrimeNumber[], bool mode 
 		countPrimes(isPrimeNumber, true);
 }
 
-void byDeletionFunctionalReduction(long maxDivisorValue, bool isPrimeNumber[], bool mode=false) {
+void byDeletionFunctionalReduction(long maxDivisorValue, bool isPrimeNumber[], bool mode = false) {
 	omp_set_num_threads(4);
 #pragma omp parallel
 	{
-		bool *threadIsPrimeNumber = new bool[N + 1 - M];
+		bool* threadIsPrimeNumber = new bool[N + 1 - M];
 		memcpy(threadIsPrimeNumber, isPrimeNumber, N + 1 - M);
 
 		int threadnum = omp_get_thread_num();
@@ -171,15 +171,14 @@ void byDeletionFunctionalReduction(long maxDivisorValue, bool isPrimeNumber[], b
 			}
 		}
 
-#pragma omp critical
-		{
-			for (int i = 0; i < N + 1 - M; i++) {
+
+		for (int i = 0; i < N + 1 - M; i++) {
+			if (threadIsPrimeNumber[i])
 				isPrimeNumber[i] = isPrimeNumber[i] && threadIsPrimeNumber[i];
-			}
 		}
-	
+
 	}
-	if(mode)
+	if (mode)
 		countPrimes(isPrimeNumber);
 }
 
